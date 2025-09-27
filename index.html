@@ -20,6 +20,7 @@
     button.primary{ background:var(--accent); border-color:var(--accent); color:white; font-weight:700; cursor:pointer; }
     button:disabled{ opacity:.6; cursor:not-allowed; }
     .muted{ color:var(--muted); font-size:14px; }
+    .error{ color:#f97316; font-size:14px; font-weight:600; }
     .result{ margin-top:20px; display:none; }
     .result h2{ margin:0 0 8px 0; font-size:18px; }
     .result section{ background:#0d1730; border:1px solid #223760; padding:14px; border-radius:12px; margin-top:12px; }
@@ -99,6 +100,32 @@
     const nextEl = document.getElementById("next");
     const detectedEl = document.getElementById("detected");
 
+    const friendlyError = (code, details = {}) => Object.assign(new Error(code), { code, ...details });
+
+    const formatErrorMessage = (err) => {
+      if (err?.code === "API_BASE_NOT_CONFIGURED") {
+        return "API non configurée : remplace l'URL factice dans le code par celle de ton déploiement (ex. domaine Netlify).";
+      }
+      if (err?.code === "HTTP_ERROR") {
+        const base = `Le serveur a répondu ${err.status ?? "avec une erreur"}.`;
+        const body = err.body ? ` Détails : ${err.body.slice(0, 200)}${err.body.length > 200 ? "…" : ""}` : "";
+        return `${base}${body}`;
+      }
+      if (err?.code === "BAD_JSON") {
+        return "La réponse reçue n'est pas un JSON valide. Vérifie que l'API renvoie bien du JSON.";
+      }
+      if (err?.code === "NETWORK_ERROR") {
+        return "Impossible de contacter l'API. Vérifie l'URL, la connexion réseau ou les autorisations CORS.";
+      }
+      return err?.message || "Une erreur inattendue est survenue.";
+    };
+
+    const ensureApiConfigured = () => {
+      if (!API_BASE || API_BASE.includes("YOUR-NETLIFY")) {
+        throw friendlyError("API_BASE_NOT_CONFIGURED");
+      }
+    };
+
     runBtn.addEventListener("click", async () => {
       const need = needEl.value.trim();
       if (!need) { alert("Merci de décrire le besoin."); return; }
@@ -107,6 +134,7 @@
       statusEl.innerHTML = '<span class="spinner"></span> Analyse en cours…';
 
       try {
+        ensureApiConfigured();
         const res = await fetch(`${API_BASE}/analyze-need`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -114,8 +142,16 @@
             need, theme: themeEl.value, tone: toneEl.value
           })
         });
-        if (!res.ok) throw new Error("Erreur serveur");
-        const data = await res.json();
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw friendlyError("HTTP_ERROR", { status: `${res.status} ${res.statusText}`.trim(), body });
+        }
+        let data;
+        try {
+          data = await res.json();
+        } catch (parseErr) {
+          throw friendlyError("BAD_JSON");
+        }
 
         detectedEl.textContent = data.detectedTheme ? `Cadre: ${data.detectedTheme}` : "Cadre: (auto)";
         approachEl.innerHTML = data.approachHtml || `<pre>${data.approach}</pre>`;
@@ -125,7 +161,12 @@
         statusEl.innerHTML = '<span class="ok">Proposition générée.</span>';
       } catch (e) {
         console.error(e);
-        statusEl.textContent = "Échec de génération. Réessaie dans un instant.";
+        const err = e instanceof Error ? e : new Error(String(e));
+        if (!err.code && err.name === "TypeError") {
+          err.code = "NETWORK_ERROR";
+        }
+        resultEl.style.display = "none";
+        statusEl.innerHTML = `<span class="error">${formatErrorMessage(err)}</span>`;
       } finally {
         runBtn.disabled = false;
       }
