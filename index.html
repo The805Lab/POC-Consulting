@@ -99,6 +99,55 @@
     const nextEl = document.getElementById("next");
     const detectedEl = document.getElementById("detected");
 
+    const shouldUseMock = API_BASE.includes("YOUR-NETLIFY");
+
+    function detectTheme(text, selectedTheme) {
+      if (selectedTheme) return selectedTheme;
+      const lower = text.toLowerCase();
+      if (/(achat|fournisseur|sourcing)/.test(lower)) return "Organisation achats";
+      if (/(donn[eé]es|gouvernance|data)/.test(lower)) return "Gouvernance & Data";
+      if (/(pmo|roadmap|plan d'action|execution|projet)/.test(lower)) return "PMO & exécution";
+      if (/(ia|digital|automatisation|num[eé]rique)/.test(lower)) return "Maturité digitale / IA";
+      return "Auto-détection";
+    }
+
+    function buildMockResponse({ need, theme, tone }) {
+      const detectedTheme = detectTheme(need, theme);
+      const toneLabels = {
+        consulting: "format consulting structuré",
+        executive: "synthèse exécutive",
+        detailed: "analyse détaillée"
+      };
+
+      const intro = tone === "executive"
+        ? "Synthèse express"
+        : tone === "detailed"
+          ? "Analyse détaillée"
+          : "Approche structurée";
+
+      return {
+        detectedTheme: detectedTheme === "Auto-détection" ? "" : detectedTheme,
+        approachHtml: `
+          <p><strong>${intro}</strong> pour votre besoin formulé :</p>
+          <blockquote>${need.replace(/</g, "&lt;")}</blockquote>
+          <ul>
+            <li>Confirmer le périmètre et les objectifs prioritaires (${toneLabels[tone]}).</li>
+            <li>Cartographier les parties prenantes et les processus impactés.</li>
+            <li>Identifier données, outils et initiatives existantes pour capitaliser dessus.</li>
+            <li>Proposer une trajectoire en plusieurs vagues avec indicateurs de succès.</li>
+          </ul>
+        `,
+        nextStepsHtml: `
+          <ol>
+            <li>Planifier un entretien de cadrage (45 min) avec le sponsor et les équipes clés.</li>
+            <li>Collecter les documents de référence disponibles (stratégie, KPIs, cartographies).</li>
+            <li>Organiser un atelier de diagnostic rapide avec 4-5 parties prenantes.</li>
+            <li>Restituer une feuille de route priorisée et les premiers quick wins.</li>
+          </ol>
+        `
+      };
+    }
+
     runBtn.addEventListener("click", async () => {
       const need = needEl.value.trim();
       if (!need) { alert("Merci de décrire le besoin."); return; }
@@ -107,17 +156,25 @@
       statusEl.innerHTML = '<span class="spinner"></span> Analyse en cours…';
 
       try {
-        const res = await fetch(`${API_BASE}/analyze-need`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            need, theme: themeEl.value, tone: toneEl.value
-          })
-        });
-        if (!res.ok) throw new Error("Erreur serveur");
-        const data = await res.json();
+        let data;
+        if (shouldUseMock) {
+          data = buildMockResponse({ need, theme: themeEl.value, tone: toneEl.value });
+        } else {
+          const res = await fetch(`${API_BASE}/analyze-need`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              need, theme: themeEl.value, tone: toneEl.value
+            })
+          });
+          if (!res.ok) throw new Error("Erreur serveur");
+          data = await res.json();
+        }
 
-        detectedEl.textContent = data.detectedTheme ? `Cadre: ${data.detectedTheme}` : "Cadre: (auto)";
+        if (!data) throw new Error("Réponse vide");
+
+        const detectedText = data.detectedTheme || detectTheme(need, themeEl.value);
+        detectedEl.textContent = detectedText ? `Cadre: ${detectedText}` : "Cadre: (auto)";
         approachEl.innerHTML = data.approachHtml || `<pre>${data.approach}</pre>`;
         nextEl.innerHTML = data.nextStepsHtml || `<pre>${data.nextSteps}</pre>`;
 
@@ -125,7 +182,17 @@
         statusEl.innerHTML = '<span class="ok">Proposition générée.</span>';
       } catch (e) {
         console.error(e);
-        statusEl.textContent = "Échec de génération. Réessaie dans un instant.";
+        try {
+          const fallback = buildMockResponse({ need, theme: themeEl.value, tone: toneEl.value });
+          detectedEl.textContent = fallback.detectedTheme ? `Cadre: ${fallback.detectedTheme}` : "Cadre: (auto)";
+          approachEl.innerHTML = fallback.approachHtml;
+          nextEl.innerHTML = fallback.nextStepsHtml;
+          resultEl.style.display = "block";
+          statusEl.innerHTML = '<span class="ok">Proposition générée (mode démo).</span>';
+        } catch (inner) {
+          console.error(inner);
+          statusEl.textContent = "Échec de génération. Réessaie dans un instant.";
+        }
       } finally {
         runBtn.disabled = false;
       }
