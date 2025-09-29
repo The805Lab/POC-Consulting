@@ -1,6 +1,6 @@
-// Netlify Function — analyze-need (Gemini)
-// Utilise l'API Google AI Studio (Gemini 1.5) via generateContent.
-// Clé attendue dans process.env.GEMINI_API_KEY
+// Netlify Function — analyze-need (Gemini) avec sélection de modèle
+// Env requises: GEMINI_API_KEY (et optionnel: DEFAULT_GEMINI_MODEL)
+// Appel: POST JSON { need, theme, tone, modelKey?: "simple|balanced|pro|max", modelId?: "models/..." }
 
 function cors() {
   return {
@@ -9,6 +9,33 @@ function cors() {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Content-Type": "application/json; charset=utf-8"
   };
+}
+
+// Mapping simple ➜ modèles Gemini (ajuste si besoin)
+const MODEL_ALIASES = {
+  simple:   "models/gemini-1.5-flash",
+  balanced: "models/gemini-2.0-flash",
+  pro:      "models/gemini-1.5-pro",
+  max:      "models/gemini-2.5-pro"      // selon dispo/quota sur ton compte
+};
+
+// Liste blanche (sécurité) : seuls ces modèles sont autorisés
+const ALLOWED_MODELS = new Set(Object.values(MODEL_ALIASES));
+
+function resolveModel({ modelKey, modelId }) {
+  // 1) modelId prioritaire si fourni et autorisé
+  if (modelId && ALLOWED_MODELS.has(modelId)) return modelId;
+
+  // 2) alias (modelKey)
+  if (modelKey && MODEL_ALIASES[modelKey]) return MODEL_ALIASES[modelKey];
+
+  // 3) variable d'env par défaut
+  if (process.env.DEFAULT_GEMINI_MODEL && ALLOWED_MODELS.has(process.env.DEFAULT_GEMINI_MODEL)) {
+    return process.env.DEFAULT_GEMINI_MODEL;
+  }
+
+  // 4) fallback
+  return MODEL_ALIASES.balanced; // "models/gemini-2.0-flash"
 }
 
 exports.handler = async (event) => {
@@ -20,10 +47,12 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { need, theme, tone } = JSON.parse(event.body || "{}");
+    const { need, theme, tone, modelKey, modelId } = JSON.parse(event.body || "{}");
     if (!need || typeof need !== "string") {
       return { statusCode: 400, headers: cors(), body: JSON.stringify({ error: "Missing 'need' string" }) };
     }
+
+    const selectedModel = resolveModel({ modelKey, modelId });
 
     const themes = ["Organisation achats","Maturité digitale / IA","Gouvernance & Data","PMO & exécution"];
     const detected = theme && theme.trim() ? theme.trim() : "";
@@ -66,8 +95,8 @@ EXIGENCE DE SORTIE (structure exacte):
 ### Prochaines étapes:
 <3 à 5 puces très concrètes>`;
 
-    // Appel Gemini (Google AI Studio) — modèle rapide et gratuit pour POC
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+    // Appel Gemini (Google AI Studio)
+    const url = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
     const r = await fetch(url, {
       method: "POST",
@@ -81,17 +110,15 @@ EXIGENCE DE SORTIE (structure exacte):
 
     if (!r.ok) {
       const errtxt = await r.text();
-      return { statusCode: 502, headers: cors(), body: JSON.stringify({ error: "Gemini error", detail: errtxt }) };
+      return { statusCode: 502, headers: cors(), body: JSON.stringify({ error: "Gemini error", detail: errtxt, model: selectedModel }) };
     }
     const data = await r.json();
 
-    // Récupération du texte
     const text =
       data?.candidates?.[0]?.content?.parts?.map(p => p.text).join("\n") ||
       data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "";
 
-    // Extraction simple des blocs
     const block = (label) => {
       const rx = new RegExp(`### ${label}:[\\s\\S]*?(?=\\n###|$)`, "i");
       const m = text.match(rx);
@@ -116,6 +143,7 @@ EXIGENCE DE SORTIE (structure exacte):
       statusCode: 200,
       headers: cors(),
       body: JSON.stringify({
+        modelUsed: selectedModel,
         detectedTheme: cadreLine,
         approach,
         approachHtml: `<div><p>${mdToHtml(approach)}</p></div>`,
