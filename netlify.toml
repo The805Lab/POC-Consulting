@@ -1,1 +1,10 @@
+[build]
+  functions = "netlify/functions"
 
+# CORS pour autoriser les appels depuis GitHub Pages (ou ailleurs)
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+    Access-Control-Allow-Methods = "POST, OPTIONS"
