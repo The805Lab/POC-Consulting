@@ -1,6 +1,6 @@
-// Netlify Function — analyze-need
-// Reçoit { need, theme, tone } et renvoie une proposition structurée.
-// Mets ta clé API dans Netlify (Site settings → Environment variables → OPENAI_API_KEY).
+// Netlify Function — analyze-need (Gemini)
+// Utilise l'API Google AI Studio (Gemini 1.5) via generateContent.
+// Clé attendue dans process.env.GEMINI_API_KEY
 
 function cors() {
   return {
@@ -11,7 +11,7 @@ function cors() {
   };
 }
 
-export async function handler(event) {
+exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 200, headers: cors(), body: "ok" };
   }
@@ -28,14 +28,13 @@ export async function handler(event) {
     const themes = ["Organisation achats","Maturité digitale / IA","Gouvernance & Data","PMO & exécution"];
     const detected = theme && theme.trim() ? theme.trim() : "";
 
-    const system = `
+    const systemInstruction = `
 Tu es un directeur de mission en cabinet de conseil.
 Ta sortie doit être: (1) un CAHIER D'APPROCHE (Objectifs, Méthodologie, Livrables, Planning indicatif),
 (2) des PROCHAINES ETAPES très claires (comment démarrer),
-dans un style concis, professionnel, lisible.
-Reste factuel et actionnable.`;
+style concis, professionnel, lisible. Reste factuel et actionnable.`;
 
-    const user = `
+    const userPrompt = `
 BESOIN CLIENT:
 ${need}
 
@@ -67,31 +66,32 @@ EXIGENCE DE SORTIE (structure exacte):
 ### Prochaines étapes:
 <3 à 5 puces très concrètes>`;
 
-    // Appel LLM (OpenAI)
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    // Appel Gemini (Google AI Studio) — modèle rapide et gratuit pour POC
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+    const r = await fetch(url, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0.3,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user }
-        ]
+        systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        generationConfig: { temperature: 0.3 }
       })
     });
 
     if (!r.ok) {
       const errtxt = await r.text();
-      return { statusCode: 502, headers: cors(), body: JSON.stringify({ error: "LLM error", detail: errtxt }) };
+      return { statusCode: 502, headers: cors(), body: JSON.stringify({ error: "Gemini error", detail: errtxt }) };
     }
-    const json = await r.json();
-    const text = json.choices?.[0]?.message?.content || "";
+    const data = await r.json();
 
-    // Extraction simple de blocs
+    // Récupération du texte
+    const text =
+      data?.candidates?.[0]?.content?.parts?.map(p => p.text).join("\n") ||
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "";
+
+    // Extraction simple des blocs
     const block = (label) => {
       const rx = new RegExp(`### ${label}:[\\s\\S]*?(?=\\n###|$)`, "i");
       const m = text.match(rx);
@@ -126,5 +126,4 @@ EXIGENCE DE SORTIE (structure exacte):
   } catch (e) {
     return { statusCode: 500, headers: cors(), body: JSON.stringify({ error: "Server error", detail: String(e?.message || e) }) };
   }
-}
-
+};
