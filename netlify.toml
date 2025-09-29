@@ -1,10 +1,21 @@
 [build]
   functions = "netlify/functions"
+  # ➜ Skip le build si ni les fonctions ni la config Netlify n'ont changé
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- netlify/functions netlify.toml"
 
-# CORS pour autoriser les appels depuis GitHub Pages (ou ailleurs)
+# CORS (Cross-Origin Resource Sharing)
+# Version POC ouverte (facile) :
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Headers = "Content-Type, Authorization"
     Access-Control-Allow-Methods = "POST, OPTIONS"
+
+# --- ALTERNATIVE (prod) : RESTREINDRE à ton domaine front (dé-commente et remplace l'URL) ---
+# [[headers]]
+#   for = "/.netlify/functions/*"
+#   [headers.values]
+#     Access-Control-Allow-Origin = "https://toncompte.github.io"
+#     Access-Control-Allow-Headers = "Content-Type, Authorization"
+#     Access-Control-Allow-Methods = "POST, OPTIONS"
