@@ -25,6 +25,7 @@
     .result h2{ margin:0 0 8px 0; font-size:18px; }
     .result section{ background:#0d1730; border:1px solid #223760; padding:14px; border-radius:12px; margin-top:12px; }
     .badge{ display:inline-block; padding:4px 10px; border-radius:999px; background:#112352; border:1px solid #26407a; font-size:12px; color:#b8c8ee; }
+    .badge-group{ display:flex; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
     footer{ max-width:920px; margin:24px auto; padding:0 24px 24px; color:#9cb0d8; font-size:13px; }
     .ok{ color:var(--ok); font-weight:600; }
     .spinner{ display:inline-block; width:16px; height:16px; border:2px solid #9fb4ff; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; vertical-align:-3px; }
@@ -60,6 +61,15 @@
             <option value="detailed">Détaillé (plus d’éléments)</option>
           </select>
         </div>
+        <div>
+          <label for="model">Modèle IA</label>
+          <select id="model">
+            <option value="simple">Gemini 1.5 Flash (rapide)</option>
+            <option value="balanced" selected>Gemini 2.0 Flash (équilibré)</option>
+            <option value="pro">Gemini 1.5 Pro (avancé)</option>
+            <option value="max">Gemini 2.5 Pro (maximum)</option>
+          </select>
+        </div>
       </div>
 
       <div class="row">
@@ -68,7 +78,10 @@
       </div>
 
       <div id="result" class="result">
-        <span class="badge" id="detected"></span>
+        <div class="badge-group">
+          <span class="badge" id="detected"></span>
+          <span class="badge" id="modelUsed"></span>
+        </div>
         <section>
           <h2>Approche proposée</h2>
           <div id="approach"></div>
@@ -94,11 +107,14 @@
     const needEl = document.getElementById("need");
     const themeEl = document.getElementById("theme");
     const toneEl = document.getElementById("tone");
+    const modelEl = document.getElementById("model");
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");
     const approachEl = document.getElementById("approach");
     const nextEl = document.getElementById("next");
     const detectedEl = document.getElementById("detected");
+    const modelUsedEl = document.getElementById("modelUsed");
+    modelUsedEl.style.display = "none";
 
     const friendlyError = (code, details = {}) => Object.assign(new Error(code), { code, ...details });
 
@@ -139,7 +155,10 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            need, theme: themeEl.value, tone: toneEl.value
+            need,
+            theme: themeEl.value,
+            tone: toneEl.value,
+            modelKey: modelEl.value
           })
         });
         if (!res.ok) {
@@ -154,6 +173,8 @@
         }
 
         detectedEl.textContent = data.detectedTheme ? `Cadre: ${data.detectedTheme}` : "Cadre: (auto)";
+        modelUsedEl.textContent = data.modelUsed ? `Modèle: ${data.modelUsed}` : "";
+        modelUsedEl.style.display = data.modelUsed ? "inline-block" : "none";
         approachEl.innerHTML = data.approachHtml || `<pre>${data.approach}</pre>`;
         nextEl.innerHTML = data.nextStepsHtml || `<pre>${data.nextSteps}</pre>`;
 
@@ -166,6 +187,8 @@
           err.code = "NETWORK_ERROR";
         }
         resultEl.style.display = "none";
+        modelUsedEl.textContent = "";
+        modelUsedEl.style.display = "none";
         statusEl.innerHTML = `<span class="error">${formatErrorMessage(err)}</span>`;
       } finally {
         runBtn.disabled = false;
