@@ -1,47 +1,14 @@
+const { resolveModel, cors, mdToHtml, partsToText } = require("./_shared/helpers");
+
 // Netlify Function — analyze-need (Gemini) avec sélection de modèle
 // Env requises: GEMINI_API_KEY (et optionnel: DEFAULT_GEMINI_MODEL)
 // Appel: POST JSON { need, theme, tone, modelKey?: "simple|balanced|pro|max", modelId?: "models/..." }
-
-function cors() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Content-Type": "application/json; charset=utf-8"
-  };
-}
-
-// Mapping simple ➜ modèles Gemini (ajuste si besoin)
-const MODEL_ALIASES = {
-  simple:   "models/gemini-1.5-flash",
-  balanced: "models/gemini-2.0-flash",
-  pro:      "models/gemini-1.5-pro",
-  max:      "models/gemini-2.5-pro"      // selon dispo/quota sur ton compte
-};
-
-// Liste blanche (sécurité) : seuls ces modèles sont autorisés
-const ALLOWED_MODELS = new Set(Object.values(MODEL_ALIASES));
-
-function resolveModel({ modelKey, modelId }) {
-  // 1) modelId prioritaire si fourni et autorisé
-  if (modelId && ALLOWED_MODELS.has(modelId)) return modelId;
-
-  // 2) alias (modelKey)
-  if (modelKey && MODEL_ALIASES[modelKey]) return MODEL_ALIASES[modelKey];
-
-  // 3) variable d'env par défaut
-  if (process.env.DEFAULT_GEMINI_MODEL && ALLOWED_MODELS.has(process.env.DEFAULT_GEMINI_MODEL)) {
-    return process.env.DEFAULT_GEMINI_MODEL;
-  }
-
-  // 4) fallback
-  return MODEL_ALIASES.balanced; // "models/gemini-2.0-flash"
-}
 
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 200, headers: cors(), body: "ok" };
   }
+
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, headers: cors(), body: JSON.stringify({ error: "Method not allowed" }) };
   }
@@ -54,7 +21,7 @@ exports.handler = async (event) => {
 
     const selectedModel = resolveModel({ modelKey, modelId });
 
-    const themes = ["Organisation achats","Maturité digitale / IA","Gouvernance & Data","PMO & exécution"];
+    const themes = ["Organisation achats", "Maturité digitale / IA", "Gouvernance & Data", "PMO & exécution"];
     const detected = theme && theme.trim() ? theme.trim() : "";
 
     const systemInstruction = `
@@ -95,7 +62,6 @@ EXIGENCE DE SORTIE (structure exacte):
 ### Prochaines étapes:
 <3 à 5 puces très concrètes>`;
 
-    // Appel Gemini (Google AI Studio)
     const url = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
     const r = await fetch(url, {
@@ -104,20 +70,22 @@ EXIGENCE DE SORTIE (structure exacte):
       body: JSON.stringify({
         systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
         contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.3 }
-      })
+        generationConfig: { temperature: 0.3 },
+      }),
     });
 
     if (!r.ok) {
       const errtxt = await r.text();
-      return { statusCode: 502, headers: cors(), body: JSON.stringify({ error: "Gemini error", detail: errtxt, model: selectedModel }) };
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Gemini error", detail: errtxt, model: selectedModel }),
+      };
     }
-    const data = await r.json();
 
+    const data = await r.json();
     const parts = data?.candidates?.[0]?.content?.parts;
-    const rawText = Array.isArray(parts)
-      ? parts.map((p) => p?.text ?? "").join("\n")
-      : parts?.[0]?.text ?? "";
+    const rawText = partsToText(parts);
     const text = typeof rawText === "string" ? rawText : String(rawText ?? "");
 
     const block = (label) => {
@@ -125,20 +93,15 @@ EXIGENCE DE SORTIE (structure exacte):
       const m = text.match(rx);
       return m ? m[0].replace(new RegExp(`^### ${label}:\\s*`, "i"), "").trim() : "";
     };
+
     const cadreLine = text.match(/### Cadre retenu:\s*([^\n]+)/i)?.[1]?.trim() || detected || "";
     const approach = [
       "### Objectifs:\n" + block("Objectifs"),
       "### Méthodologie:\n" + block("Méthodologie"),
       "### Livrables:\n" + block("Livrables"),
-      "### Planning indicatif:\n" + block("Planning indicatif")
+      "### Planning indicatif:\n" + block("Planning indicatif"),
     ].join("\n\n");
     const nextSteps = block("Prochaines étapes");
-
-    const mdToHtml = (s) => s
-      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-      .replace(/^- (.+)$/gm, "<li>$1</li>")
-      .replace(/\n{2,}/g, "</p><p>")
-      .replace(/\n/g, "<br/>");
 
     return {
       statusCode: 200,
@@ -147,12 +110,16 @@ EXIGENCE DE SORTIE (structure exacte):
         modelUsed: selectedModel,
         detectedTheme: cadreLine,
         approach,
-        approachHtml: `<div><p>${mdToHtml(approach)}</p></div>`,
+        approachHtml: mdToHtml(approach),
         nextSteps,
-        nextStepsHtml: `<div><p>${mdToHtml(nextSteps)}</p></div>`
-      })
+        nextStepsHtml: mdToHtml(nextSteps),
+      }),
     };
   } catch (e) {
-    return { statusCode: 500, headers: cors(), body: JSON.stringify({ error: "Server error", detail: String(e?.message || e) }) };
+    return {
+      statusCode: 500,
+      headers: cors(),
+      body: JSON.stringify({ error: "Server error", detail: String(e?.message || e) }),
+    };
   }
 };
