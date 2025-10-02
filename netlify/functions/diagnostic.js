@@ -1,14 +1,7 @@
 // Netlify Function — diagnostic (Gemini)
 // Fournit deux actions: analyze (diagnostic complet) et synthesize (résumé court)
 
-function cors() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Content-Type": "application/json; charset=utf-8",
-  };
-}
+const { cors, partsToText, resolveModel } = require("./_shared/gemini");
 
 const DEFAULT_MODEL = "models/gemini-1.5-flash";
 
@@ -23,7 +16,11 @@ const ensureString = (value) => {
 };
 
 const callGemini = async ({ userPrompt, systemInstruction, model }) => {
-  const selectedModel = model || process.env.DEFAULT_GEMINI_MODEL || DEFAULT_MODEL;
+  const selectedModel = resolveModel({
+    modelId: model,
+    modelKey: model,
+    defaultModel: DEFAULT_MODEL,
+  });
   const url = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
   const response = await fetch(url, {
@@ -45,7 +42,7 @@ const callGemini = async ({ userPrompt, systemInstruction, model }) => {
     throw err;
   }
 
-  return response.json();
+  return { data: await response.json(), model: selectedModel };
 };
 
 exports.handler = async (event) => {
@@ -75,15 +72,20 @@ exports.handler = async (event) => {
 
   try {
     if (action === "synthesize") {
-      const synthData = await callGemini({
+      const synthResult = await callGemini({
         userPrompt: synthesisPrompt || prompt,
         systemInstruction: synthesisSystemInstruction || systemInstruction,
         model,
       });
-      const synthesisParts = synthData?.candidates?.[0]?.content?.parts;
-      const synthesisText = Array.isArray(synthesisParts)
-        ? synthesisParts.map((part) => part?.text ?? "").join("\n")
-        : synthesisParts?.[0]?.text ?? "";
+      const synthesisParts = synthResult.data?.candidates?.[0]?.content?.parts;
+      const synthesisText = partsToText(synthesisParts);
+      if (!synthesisText.trim()) {
+        return {
+          statusCode: 502,
+          headers: cors(),
+          body: JSON.stringify({ error: "Empty response", model: synthResult.model, action }),
+        };
+      }
       const safeSynthesis = ensureString(synthesisText);
 
       return {
@@ -92,19 +94,25 @@ exports.handler = async (event) => {
         body: JSON.stringify({
           action,
           result: safeSynthesis,
+          modelUsed: synthResult.model,
         }),
       };
     }
 
-    const analyzeData = await callGemini({
+    const analyzeResult = await callGemini({
       userPrompt: prompt,
       systemInstruction,
       model,
     });
-    const analyzeParts = analyzeData?.candidates?.[0]?.content?.parts;
-    const analyzeText = Array.isArray(analyzeParts)
-      ? analyzeParts.map((part) => part?.text ?? "").join("\n")
-      : analyzeParts?.[0]?.text ?? "";
+    const analyzeParts = analyzeResult.data?.candidates?.[0]?.content?.parts;
+    const analyzeText = partsToText(analyzeParts);
+    if (!analyzeText.trim()) {
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Empty response", model: analyzeResult.model, action: "analyze" }),
+      };
+    }
     const safeAnalyze = ensureString(analyzeText);
 
     return {
@@ -113,6 +121,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         action: "analyze",
         result: safeAnalyze,
+        modelUsed: analyzeResult.model,
       }),
     };
   } catch (err) {
