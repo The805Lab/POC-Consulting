@@ -22,7 +22,13 @@ exports.handler = async (event) => {
 
     const selectedModel = resolveModel({ modelKey, modelId });
 
-    const themes = ["Organisation achats", "Maturité digitale / IA", "Gouvernance & Data", "PMO & exécution"];
+    const themes = [
+      "Organisation achats",
+      "Maturité digitale / IA",
+      "Gouvernance & Data",
+      "PMO & exécution",
+      "Études de marché",
+    ];
     const detectedThemeInput = theme && theme.trim() ? theme.trim() : "";
 
     const systemInstruction = `
@@ -43,6 +49,7 @@ CADRES DISPONIBLES:
 - Maturité digitale / IA
 - Gouvernance & Data
 - PMO & exécution
+- Études de marché
 
 EXIGENCE DE SORTIE (structure exacte):
 ### Cadre retenu:
