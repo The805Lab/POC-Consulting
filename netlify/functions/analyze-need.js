@@ -106,9 +106,9 @@ EXIGENCE DE SORTIE (structure exacte):
         modelUsed: selectedModel,
         detectedTheme: cadreLine,
         approach,
-        approachHtml: `<div><p>${mdToHtml(approach)}</p></div>`,
+        approachHtml: `<div>${mdToHtml(approach)}</div>`,
         nextSteps,
-        nextStepsHtml: `<div><p>${mdToHtml(nextSteps)}</p></div>`
+        nextStepsHtml: `<div>${mdToHtml(nextSteps)}</div>`
       })
     };
   } catch (e) {

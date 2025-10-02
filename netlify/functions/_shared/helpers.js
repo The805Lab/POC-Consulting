@@ -29,12 +29,83 @@ function cors() {
   };
 }
 
+function escapeHtml(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function mdToHtml(markdown = "") {
-  return markdown
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    .replace(/\n{2,}/g, "</p><p>")
-    .replace(/\n/g, "<br/>");
+  const lines = String(markdown || "").split(/\r?\n/);
+  const html = [];
+  let listType = null;
+  let paragraph = [];
+
+  const closeList = () => {
+    if (listType === "ul") {
+      html.push("</ul>");
+    } else if (listType === "ol") {
+      html.push("</ol>");
+    }
+    listType = null;
+  };
+
+  const flushParagraph = () => {
+    if (paragraph.length) {
+      html.push(`<p>${paragraph.join(" ")}</p>`);
+      paragraph = [];
+    }
+  };
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trimEnd();
+    if (!line.trim()) {
+      flushParagraph();
+      closeList();
+      return;
+    }
+
+    if (line.startsWith("### ")) {
+      flushParagraph();
+      closeList();
+      html.push(`<h3>${escapeHtml(line.slice(4).trim())}</h3>`);
+      return;
+    }
+
+    const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
+    if (orderedMatch) {
+      flushParagraph();
+      if (listType !== "ol") {
+        closeList();
+        html.push("<ol>");
+        listType = "ol";
+      }
+      html.push(`<li>${escapeHtml(orderedMatch[2])}</li>`);
+      return;
+    }
+
+    if (line.startsWith("- ")) {
+      flushParagraph();
+      if (listType !== "ul") {
+        closeList();
+        html.push("<ul>");
+        listType = "ul";
+      }
+      html.push(`<li>${escapeHtml(line.slice(2).trim())}</li>`);
+      return;
+    }
+
+    closeList();
+    paragraph.push(escapeHtml(line.trim()));
+  });
+
+  flushParagraph();
+  closeList();
+
+  return html.join("");
 }
 
 module.exports = {

@@ -126,7 +126,27 @@
   </footer>
 
   <script>
-    const API_BASE = "https://poc-consulting.netlify.app/.netlify/functions"; // ← remplace par ton URL
+    const API_BASE = (() => {
+      if (window.API_BASE_OVERRIDE && typeof window.API_BASE_OVERRIDE === "string") {
+        return window.API_BASE_OVERRIDE.replace(/\/$/, "");
+      }
+      const origin = window.location.origin;
+      const hostname = window.location.hostname;
+      const isLocalhost = hostname === "localhost" || hostname.startsWith("127.") || hostname.endsWith(".local");
+
+      if (origin && origin !== "null" && !isLocalhost) {
+        if (/github\.io$/i.test(hostname)) {
+          return "https://poc-consulting.netlify.app/.netlify/functions";
+        }
+        return `${origin.replace(/\/$/, "")}/.netlify/functions`;
+      }
+
+      if (isLocalhost && origin && origin !== "null") {
+        return `${origin.replace(/\/$/, "")}/.netlify/functions`;
+      }
+
+      return "https://poc-consulting.netlify.app/.netlify/functions";
+    })();
     const runBtn = document.getElementById("runBtn");
     const needEl = document.getElementById("need");
     const themeEl = document.getElementById("theme");
@@ -335,6 +355,10 @@
           throw friendlyError("BAD_JSON");
         }
 
+        if (data.modelUsed) {
+          modelUsedEl.textContent = `Modèle: ${data.modelUsed}`;
+          modelUsedEl.style.display = "inline-block";
+        }
         currentQuestions = Array.isArray(data.questions) ? data.questions : [];
         if (!currentQuestions.length) {
           throw friendlyError("NO_QUESTIONS");
@@ -408,6 +432,10 @@
           throw friendlyError("BAD_JSON");
         }
 
+        if (data.modelUsed) {
+          modelUsedEl.textContent = `Modèle: ${data.modelUsed}`;
+          modelUsedEl.style.display = "inline-block";
+        }
         diagnosticSummaryBodyEl.innerHTML = data.summaryHtml || `<pre>${data.summary}</pre>`;
         diagnosticSummaryEl.style.display = "block";
         diagnosticStatusEl.innerHTML = '<span class="ok">Synthèse générée.</span>';

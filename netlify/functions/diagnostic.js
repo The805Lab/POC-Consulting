@@ -189,7 +189,7 @@ Produit la synthèse demandée, courte mais précise.
       body: JSON.stringify({
         modelUsed: selectedModel,
         summary: text,
-        summaryHtml: `<div><p>${mdToHtml(text)}</p></div>`
+        summaryHtml: `<div>${mdToHtml(text)}</div>`
       })
     };
   } catch (e) {
