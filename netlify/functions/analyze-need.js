@@ -80,7 +80,15 @@ EXIGENCE DE SORTIE (structure exacte):
     }
     const data = await r.json();
 
-    const parts = data?.candidates?.[0]?.content?.parts;
+    if (!Array.isArray(data?.candidates) || data.candidates.length === 0) {
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Empty response", model: selectedModel }),
+      };
+    }
+
+    const parts = data.candidates[0]?.content?.parts;
     const raw = partsToText(parts);
     if (!raw.trim()) {
       return {

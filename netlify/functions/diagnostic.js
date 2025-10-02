@@ -83,7 +83,16 @@ exports.handler = async (event) => {
         modelId,
         modelKey,
       });
-      const synthesisParts = synthResult.data?.candidates?.[0]?.content?.parts;
+      const synthesisCandidates = synthResult.data?.candidates;
+      if (!Array.isArray(synthesisCandidates) || synthesisCandidates.length === 0) {
+        return {
+          statusCode: 502,
+          headers: cors(),
+          body: JSON.stringify({ error: "Empty response", model: synthResult.model, action }),
+        };
+      }
+
+      const synthesisParts = synthesisCandidates[0]?.content?.parts;
       const synthesisText = partsToText(synthesisParts);
       if (!synthesisText.trim()) {
         return {
@@ -112,7 +121,16 @@ exports.handler = async (event) => {
       modelId,
       modelKey,
     });
-    const analyzeParts = analyzeResult.data?.candidates?.[0]?.content?.parts;
+    const analyzeCandidates = analyzeResult.data?.candidates;
+    if (!Array.isArray(analyzeCandidates) || analyzeCandidates.length === 0) {
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Empty response", model: analyzeResult.model, action: "analyze" }),
+      };
+    }
+
+    const analyzeParts = analyzeCandidates[0]?.content?.parts;
     const analyzeText = partsToText(analyzeParts);
     if (!analyzeText.trim()) {
       return {
