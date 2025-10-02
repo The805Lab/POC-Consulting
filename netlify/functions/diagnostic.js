@@ -3,7 +3,7 @@
 //  - POST { action: "generate", need, theme, tone, modelKey?, modelId? }
 //  - POST { action: "analyze", need, theme, tone, answers: [...], questions: [...], modelKey?, modelId? }
 
-const { resolveModel, cors, mdToHtml } = require("./_shared/helpers");
+const { resolveModel, cors, mdToHtml, partsToText } = require("./_shared/helpers");
 
 function sanitizeJson(text = "") {
   return text
@@ -89,7 +89,8 @@ Choisis le type pertinent pour maximiser la valeur diagnostique.
       }
 
       const data = await response.json();
-      const raw = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join("\n") || data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const parts = data?.candidates?.[0]?.content?.parts;
+      const raw = partsToText(parts);
       let parsed;
       try {
         parsed = JSON.parse(sanitizeJson(raw));
@@ -181,7 +182,8 @@ Produit la synthèse demandée, courte mais précise.
     }
 
     const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join("\n") || data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const text = partsToText(parts);
 
     return {
       statusCode: 200,

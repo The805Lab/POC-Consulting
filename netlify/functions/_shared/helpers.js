@@ -108,10 +108,32 @@ function mdToHtml(markdown = "") {
   return html.join("");
 }
 
+function partsToText(parts) {
+  if (Array.isArray(parts)) {
+    const texts = parts
+      .map((p) => (p && typeof p.text === "string" ? p.text : ""))
+      .filter(Boolean);
+
+    if (texts.length) {
+      return texts.join("\n");
+    }
+
+    const first = parts.find((p) => p && typeof p.text === "string");
+    return first ? first.text : "";
+  }
+
+  if (parts && typeof parts === "object" && typeof parts.text === "string") {
+    return parts.text;
+  }
+
+  return "";
+}
+
 module.exports = {
   MODEL_ALIASES,
   ALLOWED_MODELS,
   resolveModel,
   cors,
-  mdToHtml
+  mdToHtml,
+  partsToText
 };

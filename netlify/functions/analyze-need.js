@@ -2,7 +2,7 @@
 // Env requises: GEMINI_API_KEY (et optionnel: DEFAULT_GEMINI_MODEL)
 // Appel: POST JSON { need, theme, tone, modelKey?: "simple|balanced|pro|max", modelId?: "models/..." }
 
-const { resolveModel, cors, mdToHtml } = require("./_shared/helpers");
+const { resolveModel, cors, mdToHtml, partsToText } = require("./_shared/helpers");
 
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
@@ -80,10 +80,7 @@ EXIGENCE DE SORTIE (structure exacte):
     }
     const data = await r.json();
 
-    const text =
-      data?.candidates?.[0]?.content?.parts?.map(p => p.text).join("\n") ||
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "";
+    const text = partsToText(data?.candidates?.[0]?.content?.parts);
 
     const block = (label) => {
       const rx = new RegExp(`### ${label}:[\\s\\S]*?(?=\\n###|$)`, "i");
