@@ -114,10 +114,11 @@ EXIGENCE DE SORTIE (structure exacte):
     }
     const data = await r.json();
 
-    const text =
-      data?.candidates?.[0]?.content?.parts?.map(p => p.text).join("\n") ||
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "";
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const rawText = Array.isArray(parts)
+      ? parts.map((p) => p?.text ?? "").join("\n")
+      : parts?.[0]?.text ?? "";
+    const text = typeof rawText === "string" ? rawText : String(rawText ?? "");
 
     const block = (label) => {
       const rx = new RegExp(`### ${label}:[\\s\\S]*?(?=\\n###|$)`, "i");
