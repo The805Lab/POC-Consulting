@@ -200,17 +200,14 @@ exports.handler = async (event) => {
     systemInstruction,
     synthesisSystemInstruction,
     model,
-codex/clean-up-conflict-sections-and-remove-old-implementations
     modelId,
     modelKey,
-=======
     need = "",
     theme = "",
     tone = "",
     answers = [],
     questions,
     analysisInstruction,
- main
   } = payload;
 
   try {
@@ -268,11 +265,6 @@ codex/clean-up-conflict-sections-and-remove-old-implementations
       };
     }
 
-codex/clean-up-conflict-sections-and-remove-old-implementations
-    const analyzeResult = await callGemini({
-      userPrompt: prompt,
-      systemInstruction,
-=======
     const effectiveQuestions = Array.isArray(questions) && questions.length ? questions : QUESTION_BANK;
     const normalizedAnswers = Array.isArray(answers) ? answers : [];
     const answerMap = new Map();
@@ -285,28 +277,30 @@ codex/clean-up-conflict-sections-and-remove-old-implementations
       });
     });
 
-    const answerLines = effectiveQuestions.map((question, index) => {
-      const id = question?.id ?? String(index);
-      const stored = answerMap.get(id) || {};
-      const title = ensureString(question?.title || `Question ${index + 1}`);
-      const label = stored.label || "(non renseigné)";
-      const base = `${index + 1}. ${title} : ${label}`;
-      return stored.comment ? `${base} | Commentaire : ${stored.comment}` : base;
-    }).join("\n");
+    const answerLines = effectiveQuestions
+      .map((question, index) => {
+        const id = question?.id ?? String(index);
+        const stored = answerMap.get(id) || {};
+        const title = ensureString(question?.title || `Question ${index + 1}`);
+        const label = stored.label || "(non renseigné)";
+        const base = `${index + 1}. ${title} : ${label}`;
+        return stored.comment ? `${base} | Commentaire : ${stored.comment}` : base;
+      })
+      .join("\n");
 
     const instructionText = ensureString(analysisInstruction) || ensureString(prompt) || DEFAULT_ANALYSIS_INSTRUCTION;
-    const analysisPrompt = instructionText
-      + "\n\nContexte client :\n"
-      + `${ensureString(need) || "(non communiqué)"}\n`
-      + `Thème / cadre : ${ensureString(theme) || "Auto-détection"}\n`
-      + `Format attendu : ${ensureString(tone) || "consulting"}\n\n`
-      + "Réponses du mini-diagnostic :\n"
-      + answerLines;
+    const analysisPrompt =
+      instructionText +
+      "\n\nContexte client :\n" +
+      `${ensureString(need) || "(non communiqué)"}\n` +
+      `Thème / cadre : ${ensureString(theme) || "Auto-détection"}\n` +
+      `Format attendu : ${ensureString(tone) || "consulting"}\n\n` +
+      "Réponses du mini-diagnostic :\n" +
+      answerLines;
 
-    const analyzeData = await callGemini({
+    const analyzeResult = await callGemini({
       userPrompt: analysisPrompt,
       systemInstruction: ensureString(systemInstruction) || DEFAULT_SYSTEM_INSTRUCTION,
- main
       model,
       modelId,
       modelKey,
@@ -337,11 +331,8 @@ codex/clean-up-conflict-sections-and-remove-old-implementations
       body: JSON.stringify({
         action: "analyze",
         result: safeAnalyze,
-codex/clean-up-conflict-sections-and-remove-old-implementations
-        modelUsed: analyzeResult.model,
-=======
         resultHtml: markdownToHtml(safeAnalyze),
-main
+        modelUsed: analyzeResult.model,
       }),
     };
   } catch (err) {
