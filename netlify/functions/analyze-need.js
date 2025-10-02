@@ -2,41 +2,7 @@
 // Env requises: GEMINI_API_KEY (et optionnel: DEFAULT_GEMINI_MODEL)
 // Appel: POST JSON { need, theme, tone, modelKey?: "simple|balanced|pro|max", modelId?: "models/..." }
 
-function cors() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Content-Type": "application/json; charset=utf-8"
-  };
-}
-
-// Mapping simple ➜ modèles Gemini (ajuste si besoin)
-const MODEL_ALIASES = {
-  simple:   "models/gemini-1.5-flash",
-  balanced: "models/gemini-2.0-flash",
-  pro:      "models/gemini-1.5-pro",
-  max:      "models/gemini-2.5-pro"      // selon dispo/quota sur ton compte
-};
-
-// Liste blanche (sécurité) : seuls ces modèles sont autorisés
-const ALLOWED_MODELS = new Set(Object.values(MODEL_ALIASES));
-
-function resolveModel({ modelKey, modelId }) {
-  // 1) modelId prioritaire si fourni et autorisé
-  if (modelId && ALLOWED_MODELS.has(modelId)) return modelId;
-
-  // 2) alias (modelKey)
-  if (modelKey && MODEL_ALIASES[modelKey]) return MODEL_ALIASES[modelKey];
-
-  // 3) variable d'env par défaut
-  if (process.env.DEFAULT_GEMINI_MODEL && ALLOWED_MODELS.has(process.env.DEFAULT_GEMINI_MODEL)) {
-    return process.env.DEFAULT_GEMINI_MODEL;
-  }
-
-  // 4) fallback
-  return MODEL_ALIASES.balanced; // "models/gemini-2.0-flash"
-}
+const { resolveModel, cors, mdToHtml } = require("./_shared/helpers");
 
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
@@ -132,12 +98,6 @@ EXIGENCE DE SORTIE (structure exacte):
       "### Planning indicatif:\n" + block("Planning indicatif")
     ].join("\n\n");
     const nextSteps = block("Prochaines étapes");
-
-    const mdToHtml = (s) => s
-      .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-      .replace(/^- (.+)$/gm, "<li>$1</li>")
-      .replace(/\n{2,}/g, "</p><p>")
-      .replace(/\n/g, "<br/>");
 
     return {
       statusCode: 200,

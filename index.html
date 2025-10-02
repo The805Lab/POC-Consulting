@@ -25,6 +25,17 @@
     .result h2{ margin:0 0 8px 0; font-size:18px; }
     .result section{ background:#0d1730; border:1px solid #223760; padding:14px; border-radius:12px; margin-top:12px; }
     .badge{ display:inline-block; padding:4px 10px; border-radius:999px; background:#112352; border:1px solid #26407a; font-size:12px; color:#b8c8ee; }
+    .badge-group{ display:flex; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
+    .diagnostic{ margin-top:20px; background:#0d1730; border:1px solid #223760; border-radius:12px; padding:16px; display:none; }
+    .question-list{ display:flex; flex-direction:column; gap:16px; margin-top:16px; }
+    .question-card{ border:1px solid #2b4376; border-radius:12px; padding:12px 14px; background:#0f1d36; }
+    .question-card label{ font-weight:600; margin-bottom:6px; }
+    .question-card textarea{ min-height:80px; }
+    .question-card .hint{ display:block; margin-top:4px; font-size:13px; color:var(--muted); }
+    .question-options{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+    .question-options label{ display:flex; align-items:center; gap:8px; font-weight:500; }
+    .question-options input{ width:18px; height:18px; }
+    .diagnostic-summary{ margin-top:20px; }
     footer{ max-width:920px; margin:24px auto; padding:0 24px 24px; color:#9cb0d8; font-size:13px; }
     .ok{ color:var(--ok); font-weight:600; }
     .spinner{ display:inline-block; width:16px; height:16px; border:2px solid #9fb4ff; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; vertical-align:-3px; }
@@ -60,6 +71,15 @@
             <option value="detailed">Détaillé (plus d’éléments)</option>
           </select>
         </div>
+        <div>
+          <label for="model">Modèle IA</label>
+          <select id="model">
+            <option value="simple">Gemini 1.5 Flash (rapide)</option>
+            <option value="balanced" selected>Gemini 2.0 Flash (équilibré)</option>
+            <option value="pro">Gemini 1.5 Pro (avancé)</option>
+            <option value="max">Gemini 2.5 Pro (maximum)</option>
+          </select>
+        </div>
       </div>
 
       <div class="row">
@@ -68,7 +88,10 @@
       </div>
 
       <div id="result" class="result">
-        <span class="badge" id="detected"></span>
+        <div class="badge-group">
+          <span class="badge" id="detected"></span>
+          <span class="badge" id="modelUsed"></span>
+        </div>
         <section>
           <h2>Approche proposée</h2>
           <div id="approach"></div>
@@ -78,8 +101,22 @@
           <div id="next"></div>
         </section>
         <div class="row" style="margin-top:12px;">
-          <button id="startMini" class="primary">Lancer un mini-diagnostic (5–6 questions)</button>
+          <button id="startMini" class="primary">Lancer un mini-diagnostic (10 questions)</button>
           <button id="downloadPdf">Télécharger en PDF</button>
+        </div>
+        <div id="diagnostic" class="diagnostic">
+          <p class="muted">Répondez au questionnaire ciblé (10 questions) pour affiner la compréhension de votre contexte interne.</p>
+          <div id="diagnosticStatus" class="muted"></div>
+          <form id="diagnosticForm" style="display:none;">
+            <div id="diagnosticQuestions" class="question-list"></div>
+            <div class="row" style="margin-top:16px;">
+              <button type="submit" class="primary" id="submitDiagnostic">Analyser mes réponses</button>
+            </div>
+          </form>
+          <section id="diagnosticSummary" class="diagnostic-summary" style="display:none;">
+            <h2>Synthèse du diagnostic</h2>
+            <div id="diagnosticSummaryBody"></div>
+          </section>
         </div>
       </div>
     </div>
@@ -94,11 +131,90 @@
     const needEl = document.getElementById("need");
     const themeEl = document.getElementById("theme");
     const toneEl = document.getElementById("tone");
+    const modelEl = document.getElementById("model");
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");
     const approachEl = document.getElementById("approach");
     const nextEl = document.getElementById("next");
     const detectedEl = document.getElementById("detected");
+    const modelUsedEl = document.getElementById("modelUsed");
+    const startMiniBtn = document.getElementById("startMini");
+    const diagnosticContainer = document.getElementById("diagnostic");
+    const diagnosticStatusEl = document.getElementById("diagnosticStatus");
+    const diagnosticForm = document.getElementById("diagnosticForm");
+    const diagnosticQuestionsEl = document.getElementById("diagnosticQuestions");
+    const diagnosticSummaryEl = document.getElementById("diagnosticSummary");
+    const diagnosticSummaryBodyEl = document.getElementById("diagnosticSummaryBody");
+    const submitDiagnosticBtn = document.getElementById("submitDiagnostic");
+    modelUsedEl.style.display = "none";
+
+    let currentQuestions = [];
+    let questionElements = new Map();
+
+    const resetDiagnosticView = () => {
+      diagnosticStatusEl.textContent = "";
+      diagnosticQuestionsEl.innerHTML = "";
+      diagnosticForm.style.display = "none";
+      diagnosticSummaryEl.style.display = "none";
+      diagnosticSummaryBodyEl.innerHTML = "";
+      diagnosticContainer.style.display = "none";
+      currentQuestions = [];
+      questionElements = new Map();
+      startMiniBtn.textContent = "Lancer un mini-diagnostic (10 questions)";
+    };
+
+    resetDiagnosticView();
+
+    const renderDiagnosticQuestions = (questions) => {
+      diagnosticQuestionsEl.innerHTML = "";
+      questionElements = new Map();
+      questions.forEach((question, index) => {
+        const card = document.createElement("div");
+        card.className = "question-card";
+        card.dataset.questionId = question.id;
+        card.dataset.type = question.type;
+
+        const title = document.createElement("label");
+        const safeId = `diag-q${index + 1}`;
+        title.setAttribute("for", safeId);
+        title.textContent = `${index + 1}. ${question.label}`;
+        card.appendChild(title);
+
+        if (question.type === "checkbox" && Array.isArray(question.options) && question.options.length) {
+          const optionsWrapper = document.createElement("div");
+          optionsWrapper.className = "question-options";
+          question.options.forEach((opt, optIndex) => {
+            const optionId = `${safeId}-opt${optIndex + 1}`;
+            const optionLabel = document.createElement("label");
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.value = opt;
+            checkbox.id = optionId;
+            checkbox.name = safeId;
+            optionLabel.appendChild(checkbox);
+            const text = document.createElement("span");
+            text.textContent = opt;
+            optionLabel.appendChild(text);
+            optionsWrapper.appendChild(optionLabel);
+          });
+          card.appendChild(optionsWrapper);
+          if (question.placeholder) {
+            const hint = document.createElement("span");
+            hint.className = "hint";
+            hint.textContent = question.placeholder;
+            card.appendChild(hint);
+          }
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.id = safeId;
+          textarea.placeholder = question.placeholder || "";
+          card.appendChild(textarea);
+        }
+
+        diagnosticQuestionsEl.appendChild(card);
+        questionElements.set(question.id, card);
+      });
+    };
 
     const friendlyError = (code, details = {}) => Object.assign(new Error(code), { code, ...details });
 
@@ -117,6 +233,9 @@
       if (err?.code === "NETWORK_ERROR") {
         return "Impossible de contacter l'API. Vérifie l'URL, la connexion réseau ou les autorisations CORS.";
       }
+      if (err?.code === "NO_QUESTIONS") {
+        return "Le modèle n'a pas fourni de questionnaire exploitable. Merci de réessayer.";
+      }
       return err?.message || "Une erreur inattendue est survenue.";
     };
 
@@ -130,6 +249,7 @@
       const need = needEl.value.trim();
       if (!need) { alert("Merci de décrire le besoin."); return; }
 
+      resetDiagnosticView();
       runBtn.disabled = true;
       statusEl.innerHTML = '<span class="spinner"></span> Analyse en cours…';
 
@@ -139,7 +259,10 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            need, theme: themeEl.value, tone: toneEl.value
+            need,
+            theme: themeEl.value,
+            tone: toneEl.value,
+            modelKey: modelEl.value
           })
         });
         if (!res.ok) {
@@ -154,6 +277,8 @@
         }
 
         detectedEl.textContent = data.detectedTheme ? `Cadre: ${data.detectedTheme}` : "Cadre: (auto)";
+        modelUsedEl.textContent = data.modelUsed ? `Modèle: ${data.modelUsed}` : "";
+        modelUsedEl.style.display = data.modelUsed ? "inline-block" : "none";
         approachEl.innerHTML = data.approachHtml || `<pre>${data.approach}</pre>`;
         nextEl.innerHTML = data.nextStepsHtml || `<pre>${data.nextSteps}</pre>`;
 
@@ -166,14 +291,137 @@
           err.code = "NETWORK_ERROR";
         }
         resultEl.style.display = "none";
+        modelUsedEl.textContent = "";
+        modelUsedEl.style.display = "none";
         statusEl.innerHTML = `<span class="error">${formatErrorMessage(err)}</span>`;
       } finally {
         runBtn.disabled = false;
       }
     });
 
-    document.getElementById("startMini").addEventListener("click", () => {
-      alert("Mini-diagnostic à venir (5–6 questions). POC : bouton factice pour l’instant.");
+    startMiniBtn.addEventListener("click", async () => {
+      if (resultEl.style.display !== "block") { alert("Générez d'abord une proposition avant de lancer le mini-diagnostic."); return; }
+      const need = needEl.value.trim();
+      if (!need) { alert("Merci de décrire le besoin avant de lancer le diagnostic."); return; }
+
+      diagnosticContainer.style.display = "block";
+      diagnosticForm.style.display = "none";
+      diagnosticSummaryEl.style.display = "none";
+      diagnosticSummaryBodyEl.innerHTML = "";
+      diagnosticStatusEl.innerHTML = '<span class="spinner"></span> Génération du questionnaire…';
+      startMiniBtn.disabled = true;
+
+      try {
+        ensureApiConfigured();
+        const res = await fetch(`${API_BASE}/diagnostic`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "generate",
+            need,
+            theme: themeEl.value,
+            tone: toneEl.value,
+            modelKey: modelEl.value
+          })
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw friendlyError("HTTP_ERROR", { status: `${res.status} ${res.statusText}`.trim(), body });
+        }
+        let data;
+        try {
+          data = await res.json();
+        } catch (parseErr) {
+          throw friendlyError("BAD_JSON");
+        }
+
+        currentQuestions = Array.isArray(data.questions) ? data.questions : [];
+        if (!currentQuestions.length) {
+          throw friendlyError("NO_QUESTIONS");
+        }
+
+        renderDiagnosticQuestions(currentQuestions);
+        diagnosticForm.style.display = "block";
+        diagnosticStatusEl.innerHTML = '<span class="ok">Questionnaire généré. Répondez aux 10 questions ci-dessous.</span>';
+        diagnosticSummaryEl.style.display = "none";
+        diagnosticSummaryBodyEl.innerHTML = "";
+        startMiniBtn.textContent = "Régénérer le mini-diagnostic";
+        diagnosticContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (e) {
+        console.error(e);
+        const err = e instanceof Error ? e : new Error(String(e));
+        if (!err.code && err.name === "TypeError") {
+          err.code = "NETWORK_ERROR";
+        }
+        diagnosticForm.style.display = "none";
+        diagnosticStatusEl.innerHTML = `<span class="error">${formatErrorMessage(err)}</span>`;
+      } finally {
+        startMiniBtn.disabled = false;
+      }
+    });
+
+    diagnosticForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!currentQuestions.length) { alert("Générez d'abord le questionnaire."); return; }
+      const need = needEl.value.trim();
+      if (!need) { alert("Merci de décrire le besoin avant d'analyser vos réponses."); return; }
+
+      submitDiagnosticBtn.disabled = true;
+      diagnosticStatusEl.innerHTML = '<span class="spinner"></span> Analyse des réponses…';
+
+      try {
+        ensureApiConfigured();
+        const answers = currentQuestions.map((question) => {
+          const card = questionElements.get(question.id);
+          if (!card) {
+            return { id: question.id, value: question.type === "checkbox" ? [] : "" };
+          }
+          if (question.type === "checkbox") {
+            const selected = Array.from(card.querySelectorAll('input[type="checkbox"]:checked')).map((input) => input.value);
+            return { id: question.id, value: selected };
+          }
+          const textarea = card.querySelector("textarea");
+          return { id: question.id, value: textarea ? textarea.value.trim() : "" };
+        });
+
+        const res = await fetch(`${API_BASE}/diagnostic`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "analyze",
+            need,
+            theme: themeEl.value,
+            tone: toneEl.value,
+            modelKey: modelEl.value,
+            answers,
+            questions: currentQuestions
+          })
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw friendlyError("HTTP_ERROR", { status: `${res.status} ${res.statusText}`.trim(), body });
+        }
+        let data;
+        try {
+          data = await res.json();
+        } catch (parseErr) {
+          throw friendlyError("BAD_JSON");
+        }
+
+        diagnosticSummaryBodyEl.innerHTML = data.summaryHtml || `<pre>${data.summary}</pre>`;
+        diagnosticSummaryEl.style.display = "block";
+        diagnosticStatusEl.innerHTML = '<span class="ok">Synthèse générée.</span>';
+        diagnosticContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (e) {
+        console.error(e);
+        const err = e instanceof Error ? e : new Error(String(e));
+        if (!err.code && err.name === "TypeError") {
+          err.code = "NETWORK_ERROR";
+        }
+        diagnosticStatusEl.innerHTML = `<span class="error">${formatErrorMessage(err)}</span>`;
+      } finally {
+        submitDiagnosticBtn.disabled = false;
+      }
     });
 
     document.getElementById("downloadPdf").addEventListener("click", () => {
