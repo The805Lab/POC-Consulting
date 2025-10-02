@@ -72,6 +72,50 @@ const QUESTION_BANK = [
       { value: "partiel", label: "Indicateurs définis mais usage irrégulier" },
       { value: "suivi", label: "KPIs partagés et suivis régulièrement" }
     ]
+  },
+  {
+    id: "infrastructure",
+    title: "Infrastructure & outils",
+    description: "Disponibilité des plateformes data / IA et intégration au SI.",
+    allowComment: true,
+    options: [
+      { value: "fragmentee", label: "Outils disparates, intégrations limitées" },
+      { value: "en-transition", label: "Socle en cours de modernisation" },
+      { value: "industrialisee", label: "Plateforme robuste, intégrée et scalable" }
+    ]
+  },
+  {
+    id: "securite",
+    title: "Sécurité & conformité",
+    description: "Cadre de gestion des risques, conformité et protection des données.",
+    allowComment: true,
+    options: [
+      { value: "non-cadre", label: "Peu de contrôles formalisés" },
+      { value: "partiel", label: "Politique définie mais application hétérogène" },
+      { value: "maitrise", label: "Cadre robuste, contrôles réguliers et documentés" }
+    ]
+  },
+  {
+    id: "culture",
+    title: "Culture & adoption",
+    description: "Appétence des équipes métiers pour les usages data / IA.",
+    allowComment: true,
+    options: [
+      { value: "sceptique", label: "Résistances fortes, usages isolés" },
+      { value: "exploration", label: "Initiatives pilotes, intérêt grandissant" },
+      { value: "diffusee", label: "Culture data partagée, initiatives multipliées" }
+    ]
+  },
+  {
+    id: "ecosysteme",
+    title: "Partenariats & écosystème",
+    description: "Mobilisation d'experts externes et d'un réseau d'innovation.",
+    allowComment: true,
+    options: [
+      { value: "limite", label: "Peu de partenaires identifiés" },
+      { value: "opportuniste", label: "Recours ponctuel à des partenaires" },
+      { value: "structure", label: "Écosystème établi avec collaborations régulières" }
+    ]
   }
 ];
 
