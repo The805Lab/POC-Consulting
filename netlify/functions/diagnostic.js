@@ -1,14 +1,7 @@
 // Netlify Function — diagnostic (Gemini)
 // Fournit trois actions: generate (questions), analyze (diagnostic complet) et synthesize (résumé court)
 
-function cors() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Content-Type": "application/json; charset=utf-8",
-  };
-}
+const { cors, partsToText, resolveModel } = require("./_shared/gemini");
 
 const DEFAULT_MODEL = "models/gemini-1.5-flash";
 
@@ -116,8 +109,14 @@ const ensureString = (value) => {
   }
 };
 
-const callGemini = async ({ userPrompt, systemInstruction, model }) => {
-  const selectedModel = model || process.env.DEFAULT_GEMINI_MODEL || DEFAULT_MODEL;
+const callGemini = async ({ userPrompt, systemInstruction, model, modelId, modelKey }) => {
+  const idCandidate = modelId || (typeof model === "string" && model.startsWith("models/") ? model : undefined);
+  const keyCandidate = modelKey || (typeof model === "string" && !model.startsWith("models/") ? model : undefined);
+  const selectedModel = resolveModel({
+    modelId: idCandidate,
+    modelKey: keyCandidate,
+    defaultModel: DEFAULT_MODEL,
+  });
   const url = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
   const response = await fetch(url, {
@@ -139,7 +138,7 @@ const callGemini = async ({ userPrompt, systemInstruction, model }) => {
     throw err;
   }
 
-  return response.json();
+  return { data: await response.json(), model: selectedModel };
 };
 
 const markdownToHtml = (text) => {
@@ -201,12 +200,17 @@ exports.handler = async (event) => {
     systemInstruction,
     synthesisSystemInstruction,
     model,
+codex/clean-up-conflict-sections-and-remove-old-implementations
+    modelId,
+    modelKey,
+=======
     need = "",
     theme = "",
     tone = "",
     answers = [],
     questions,
     analysisInstruction,
+ main
   } = payload;
 
   try {
@@ -226,15 +230,31 @@ exports.handler = async (event) => {
     }
 
     if (action === "synthesize") {
-      const synthData = await callGemini({
+      const synthResult = await callGemini({
         userPrompt: synthesisPrompt || prompt,
         systemInstruction: synthesisSystemInstruction || systemInstruction,
         model,
+        modelId,
+        modelKey,
       });
-      const synthesisParts = synthData?.candidates?.[0]?.content?.parts;
-      const synthesisText = Array.isArray(synthesisParts)
-        ? synthesisParts.map((part) => part?.text ?? "").join("\n")
-        : synthesisParts?.[0]?.text ?? "";
+      const synthesisCandidates = synthResult.data?.candidates;
+      if (!Array.isArray(synthesisCandidates) || synthesisCandidates.length === 0) {
+        return {
+          statusCode: 502,
+          headers: cors(),
+          body: JSON.stringify({ error: "Empty response", model: synthResult.model, action }),
+        };
+      }
+
+      const synthesisParts = synthesisCandidates[0]?.content?.parts;
+      const synthesisText = partsToText(synthesisParts);
+      if (!synthesisText.trim()) {
+        return {
+          statusCode: 502,
+          headers: cors(),
+          body: JSON.stringify({ error: "Empty response", model: synthResult.model, action }),
+        };
+      }
       const safeSynthesis = ensureString(synthesisText);
 
       return {
@@ -243,10 +263,16 @@ exports.handler = async (event) => {
         body: JSON.stringify({
           action,
           result: safeSynthesis,
+          modelUsed: synthResult.model,
         }),
       };
     }
 
+codex/clean-up-conflict-sections-and-remove-old-implementations
+    const analyzeResult = await callGemini({
+      userPrompt: prompt,
+      systemInstruction,
+=======
     const effectiveQuestions = Array.isArray(questions) && questions.length ? questions : QUESTION_BANK;
     const normalizedAnswers = Array.isArray(answers) ? answers : [];
     const answerMap = new Map();
@@ -280,12 +306,29 @@ exports.handler = async (event) => {
     const analyzeData = await callGemini({
       userPrompt: analysisPrompt,
       systemInstruction: ensureString(systemInstruction) || DEFAULT_SYSTEM_INSTRUCTION,
+ main
       model,
+      modelId,
+      modelKey,
     });
-    const analyzeParts = analyzeData?.candidates?.[0]?.content?.parts;
-    const analyzeText = Array.isArray(analyzeParts)
-      ? analyzeParts.map((part) => part?.text ?? "").join("\n")
-      : analyzeParts?.[0]?.text ?? "";
+    const analyzeCandidates = analyzeResult.data?.candidates;
+    if (!Array.isArray(analyzeCandidates) || analyzeCandidates.length === 0) {
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Empty response", model: analyzeResult.model, action: "analyze" }),
+      };
+    }
+
+    const analyzeParts = analyzeCandidates[0]?.content?.parts;
+    const analyzeText = partsToText(analyzeParts);
+    if (!analyzeText.trim()) {
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Empty response", model: analyzeResult.model, action: "analyze" }),
+      };
+    }
     const safeAnalyze = ensureString(analyzeText);
 
     return {
@@ -294,7 +337,11 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         action: "analyze",
         result: safeAnalyze,
+codex/clean-up-conflict-sections-and-remove-old-implementations
+        modelUsed: analyzeResult.model,
+=======
         resultHtml: markdownToHtml(safeAnalyze),
+main
       }),
     };
   } catch (err) {

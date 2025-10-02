@@ -4,6 +4,11 @@ const { resolveModel, cors, mdToHtml, partsToText } = require("./_shared/helpers
 // Env requises: GEMINI_API_KEY (et optionnel: DEFAULT_GEMINI_MODEL)
 // Appel: POST JSON { need, theme, tone, modelKey?: "simple|balanced|pro|max", modelId?: "models/..." }
 
+codex/clean-up-conflict-sections-and-remove-old-implementations
+const { cors, resolveModel, mdToHtml, partsToText } = require("./_shared/gemini");
+
+=======
+main
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 200, headers: cors(), body: "ok" };
@@ -83,10 +88,31 @@ EXIGENCE DE SORTIE (structure exacte):
       };
     }
 
+codex/clean-up-conflict-sections-and-remove-old-implementations
+    if (!Array.isArray(data?.candidates) || data.candidates.length === 0) {
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Empty response", model: selectedModel }),
+      };
+    }
+
+    const parts = data.candidates[0]?.content?.parts;
+    const raw = partsToText(parts);
+    if (!raw.trim()) {
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Empty response", model: selectedModel }),
+      };
+    }
+    const text = partsToText(parts);
+=======
     const data = await r.json();
     const parts = data?.candidates?.[0]?.content?.parts;
     const rawText = partsToText(parts);
     const text = typeof rawText === "string" ? rawText : String(rawText ?? "");
+main
 
     const block = (label) => {
       const rx = new RegExp(`### ${label}:[\\s\\S]*?(?=\\n###|$)`, "i");
