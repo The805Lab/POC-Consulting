@@ -15,10 +15,12 @@ const ensureString = (value) => {
   }
 };
 
-const callGemini = async ({ userPrompt, systemInstruction, model }) => {
+const callGemini = async ({ userPrompt, systemInstruction, model, modelId, modelKey }) => {
+  const idCandidate = modelId || (typeof model === "string" && model.startsWith("models/") ? model : undefined);
+  const keyCandidate = modelKey || (typeof model === "string" && !model.startsWith("models/") ? model : undefined);
   const selectedModel = resolveModel({
-    modelId: model,
-    modelKey: model,
+    modelId: idCandidate,
+    modelKey: keyCandidate,
     defaultModel: DEFAULT_MODEL,
   });
   const url = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${process.env.GEMINI_API_KEY}`;
@@ -68,6 +70,8 @@ exports.handler = async (event) => {
     systemInstruction,
     synthesisSystemInstruction,
     model,
+    modelId,
+    modelKey,
   } = payload;
 
   try {
@@ -76,6 +80,8 @@ exports.handler = async (event) => {
         userPrompt: synthesisPrompt || prompt,
         systemInstruction: synthesisSystemInstruction || systemInstruction,
         model,
+        modelId,
+        modelKey,
       });
       const synthesisParts = synthResult.data?.candidates?.[0]?.content?.parts;
       const synthesisText = partsToText(synthesisParts);
@@ -103,6 +109,8 @@ exports.handler = async (event) => {
       userPrompt: prompt,
       systemInstruction,
       model,
+      modelId,
+      modelKey,
     });
     const analyzeParts = analyzeResult.data?.candidates?.[0]?.content?.parts;
     const analyzeText = partsToText(analyzeParts);

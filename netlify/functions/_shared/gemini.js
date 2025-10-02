@@ -47,7 +47,7 @@ const partsToText = (parts) => {
   if (!parts) return "";
   if (typeof parts === "string") return parts;
   if (Array.isArray(parts)) {
-    return parts.map(normalizePart).filter(Boolean).join("\n");
+    return parts.map(normalizePart).join("\n");
   }
   if (typeof parts.text === "string") {
     return parts.text;
