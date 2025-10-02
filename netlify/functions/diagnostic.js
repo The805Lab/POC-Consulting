@@ -1,9 +1,103 @@
 // Netlify Function — diagnostic (Gemini)
-// Fournit deux actions: analyze (diagnostic complet) et synthesize (résumé court)
+// Fournit trois actions: generate (questions), analyze (diagnostic complet) et synthesize (résumé court)
 
 const { cors, partsToText, resolveModel } = require("./_shared/gemini");
 
 const DEFAULT_MODEL = "models/gemini-1.5-flash";
+
+const QUESTION_BANK = [
+  {
+    id: "vision",
+    title: "Vision & sponsoring",
+    description: "Clarté de l'objectif et niveau d'engagement des décideurs.",
+    allowComment: true,
+    commentLabel: "Contexte supplémentaire (optionnel)",
+    options: [
+      { value: "flou", label: "Vision peu formalisée ou sponsor absent" },
+      { value: "partiel", label: "Objectifs en cours de cadrage, sponsor identifié" },
+      { value: "aligne", label: "Vision partagée, sponsor engagé et disponible" }
+    ]
+  },
+  {
+    id: "data",
+    title: "Données disponibles",
+    description: "Qualité, accès et gouvernance des données utiles.",
+    allowComment: true,
+    options: [
+      { value: "disperse", label: "Données dispersées ou peu fiables" },
+      { value: "partielle", label: "Sources identifiées mais hétérogènes" },
+      { value: "qualifiee", label: "Base consolidée avec gouvernance active" }
+    ]
+  },
+  {
+    id: "process",
+    title: "Processus & exécution",
+    description: "Niveau de formalisation des processus impactés par l'IA.",
+    allowComment: true,
+    options: [
+      { value: "ad-hoc", label: "Processus peu formalisés / dépendants des individus" },
+      { value: "structure", label: "Processus documentés mais perfectibles" },
+      { value: "industrialise", label: "Processus maîtrisés avec indicateurs suivis" }
+    ]
+  },
+  {
+    id: "skills",
+    title: "Compétences & équipes",
+    description: "Disponibilité des compétences data/IA et conduite du changement.",
+    allowComment: true,
+    options: [
+      { value: "limite", label: "Compétences internes limitées" },
+      { value: "mixte", label: "Équipe mixte interne/externe" },
+      { value: "autonome", label: "Équipe dédiée expérimentée" }
+    ]
+  },
+  {
+    id: "governance",
+    title: "Gouvernance & priorisation",
+    description: "Cadre de décision, priorisation des cas d'usage et pilotage.",
+    allowComment: true,
+    options: [
+      { value: "informel", label: "Décisions opportunistes, gouvernance absente" },
+      { value: "emergent", label: "Instances ponctuelles, priorisation partielle" },
+      { value: "cadre", label: "Gouvernance claire, arbitrages réguliers" }
+    ]
+  },
+  {
+    id: "impact",
+    title: "Mesure d'impact",
+    description: "Suivi des bénéfices et diffusion des résultats.",
+    allowComment: true,
+    options: [
+      { value: "aucun", label: "Peu ou pas d'indicateurs suivis" },
+      { value: "partiel", label: "Indicateurs définis mais usage irrégulier" },
+      { value: "suivi", label: "KPIs partagés et suivis régulièrement" }
+    ]
+  }
+];
+
+const DEFAULT_INTRO = "Répondez à ce mini-questionnaire pour situer rapidement votre maturité data / IA.";
+const DEFAULT_EXPECTATIONS = [
+  { title: "Synthèse", description: "1 à 2 phrases qui résument la situation." },
+  { title: "Points forts", description: "Ce qui peut être valorisé immédiatement." },
+  { title: "Risques / alertes", description: "Points de vigilance à adresser." },
+  { title: "Recommandations rapides", description: "3 à 5 actions concrètes sur 30 jours." }
+];
+
+const DEFAULT_SYSTEM_INSTRUCTION = `Tu es directeur de mission en cabinet de conseil.
+Tu réalises des diagnostics flash de maturité IA.
+Tu es factuel, clair, orienté plan d'action.`;
+
+const DEFAULT_ANALYSIS_INSTRUCTION = `Analyse les réponses au mini-diagnostic ci-dessous.
+Retourne un texte structuré en Markdown avec :
+### Synthèse
+- 2 phrases maximum
+### Points forts
+- Liste de puces
+### Risques / alertes
+- Liste de puces
+### Recommandations rapides
+- Liste de puces avec actions concrètes (30-60 jours).
+Adapte le ton au format demandé (consulting, executive, detailed).`;
 
 const ensureString = (value) => {
   if (typeof value === "string") return value;
@@ -47,6 +141,42 @@ const callGemini = async ({ userPrompt, systemInstruction, model, modelId, model
   return { data: await response.json(), model: selectedModel };
 };
 
+const markdownToHtml = (text) => {
+  const lines = ensureString(text).split(/\r?\n/);
+  const chunks = [];
+  let inList = false;
+  const closeList = () => {
+    if (inList) {
+      chunks.push("</ul>");
+      inList = false;
+    }
+  };
+  for (const line of lines) {
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (!inList) {
+        chunks.push("<ul>");
+        inList = true;
+      }
+      chunks.push(`<li>${line.replace(/^\s*[-*]\s+/, "")}</li>`);
+      continue;
+    }
+    closeList();
+    if (/^###\s+/.test(line)) {
+      chunks.push(`<h3>${line.replace(/^###\s+/, "")}</h3>`);
+    } else if (/^##\s+/.test(line)) {
+      chunks.push(`<h2>${line.replace(/^##\s+/, "")}</h2>`);
+    } else if (/^#\s+/.test(line)) {
+      chunks.push(`<h1>${line.replace(/^#\s+/, "")}</h1>`);
+    } else if (line.trim() === "") {
+      chunks.push("");
+    } else {
+      chunks.push(`<p>${line}</p>`);
+    }
+  }
+  closeList();
+  return chunks.join("");
+};
+
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 200, headers: cors(), body: "ok" };
@@ -70,11 +200,35 @@ exports.handler = async (event) => {
     systemInstruction,
     synthesisSystemInstruction,
     model,
+codex/clean-up-conflict-sections-and-remove-old-implementations
     modelId,
     modelKey,
+=======
+    need = "",
+    theme = "",
+    tone = "",
+    answers = [],
+    questions,
+    analysisInstruction,
+ main
   } = payload;
 
   try {
+    if (action === "generate") {
+      return {
+        statusCode: 200,
+        headers: cors(),
+        body: JSON.stringify({
+          action,
+          intro: DEFAULT_INTRO,
+          analysisExpectations: DEFAULT_EXPECTATIONS,
+          questions: QUESTION_BANK,
+          systemInstruction: ensureString(systemInstruction) || DEFAULT_SYSTEM_INSTRUCTION,
+          analysisInstruction: ensureString(analysisInstruction) || DEFAULT_ANALYSIS_INSTRUCTION,
+        }),
+      };
+    }
+
     if (action === "synthesize") {
       const synthResult = await callGemini({
         userPrompt: synthesisPrompt || prompt,
@@ -114,9 +268,45 @@ exports.handler = async (event) => {
       };
     }
 
+codex/clean-up-conflict-sections-and-remove-old-implementations
     const analyzeResult = await callGemini({
       userPrompt: prompt,
       systemInstruction,
+=======
+    const effectiveQuestions = Array.isArray(questions) && questions.length ? questions : QUESTION_BANK;
+    const normalizedAnswers = Array.isArray(answers) ? answers : [];
+    const answerMap = new Map();
+    normalizedAnswers.forEach((entry, index) => {
+      const id = entry?.id ?? String(index);
+      answerMap.set(id, {
+        value: ensureString(entry?.value),
+        label: ensureString(entry?.label || entry?.value),
+        comment: ensureString(entry?.comment),
+      });
+    });
+
+    const answerLines = effectiveQuestions.map((question, index) => {
+      const id = question?.id ?? String(index);
+      const stored = answerMap.get(id) || {};
+      const title = ensureString(question?.title || `Question ${index + 1}`);
+      const label = stored.label || "(non renseigné)";
+      const base = `${index + 1}. ${title} : ${label}`;
+      return stored.comment ? `${base} | Commentaire : ${stored.comment}` : base;
+    }).join("\n");
+
+    const instructionText = ensureString(analysisInstruction) || ensureString(prompt) || DEFAULT_ANALYSIS_INSTRUCTION;
+    const analysisPrompt = instructionText
+      + "\n\nContexte client :\n"
+      + `${ensureString(need) || "(non communiqué)"}\n`
+      + `Thème / cadre : ${ensureString(theme) || "Auto-détection"}\n`
+      + `Format attendu : ${ensureString(tone) || "consulting"}\n\n`
+      + "Réponses du mini-diagnostic :\n"
+      + answerLines;
+
+    const analyzeData = await callGemini({
+      userPrompt: analysisPrompt,
+      systemInstruction: ensureString(systemInstruction) || DEFAULT_SYSTEM_INSTRUCTION,
+ main
       model,
       modelId,
       modelKey,
@@ -147,7 +337,11 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         action: "analyze",
         result: safeAnalyze,
+codex/clean-up-conflict-sections-and-remove-old-implementations
         modelUsed: analyzeResult.model,
+=======
+        resultHtml: markdownToHtml(safeAnalyze),
+main
       }),
     };
   } catch (err) {

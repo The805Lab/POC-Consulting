@@ -1,13 +1,19 @@
+const { resolveModel, cors, mdToHtml, partsToText } = require("./_shared/helpers");
+
 // Netlify Function — analyze-need (Gemini) avec sélection de modèle
 // Env requises: GEMINI_API_KEY (et optionnel: DEFAULT_GEMINI_MODEL)
 // Appel: POST JSON { need, theme, tone, modelKey?: "simple|balanced|pro|max", modelId?: "models/..." }
 
+codex/clean-up-conflict-sections-and-remove-old-implementations
 const { cors, resolveModel, mdToHtml, partsToText } = require("./_shared/gemini");
 
+=======
+main
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 200, headers: cors(), body: "ok" };
   }
+
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, headers: cors(), body: JSON.stringify({ error: "Method not allowed" }) };
   }
@@ -20,7 +26,7 @@ exports.handler = async (event) => {
 
     const selectedModel = resolveModel({ modelKey, modelId });
 
-    const themes = ["Organisation achats","Maturité digitale / IA","Gouvernance & Data","PMO & exécution"];
+    const themes = ["Organisation achats", "Maturité digitale / IA", "Gouvernance & Data", "PMO & exécution"];
     const detected = theme && theme.trim() ? theme.trim() : "";
 
     const systemInstruction = `
@@ -61,7 +67,6 @@ EXIGENCE DE SORTIE (structure exacte):
 ### Prochaines étapes:
 <3 à 5 puces très concrètes>`;
 
-    // Appel Gemini (Google AI Studio)
     const url = `https://generativelanguage.googleapis.com/v1beta/${selectedModel}:generateContent?key=${process.env.GEMINI_API_KEY}`;
 
     const r = await fetch(url, {
@@ -70,16 +75,20 @@ EXIGENCE DE SORTIE (structure exacte):
       body: JSON.stringify({
         systemInstruction: { role: "system", parts: [{ text: systemInstruction }] },
         contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        generationConfig: { temperature: 0.3 }
-      })
+        generationConfig: { temperature: 0.3 },
+      }),
     });
 
     if (!r.ok) {
       const errtxt = await r.text();
-      return { statusCode: 502, headers: cors(), body: JSON.stringify({ error: "Gemini error", detail: errtxt, model: selectedModel }) };
+      return {
+        statusCode: 502,
+        headers: cors(),
+        body: JSON.stringify({ error: "Gemini error", detail: errtxt, model: selectedModel }),
+      };
     }
-    const data = await r.json();
 
+codex/clean-up-conflict-sections-and-remove-old-implementations
     if (!Array.isArray(data?.candidates) || data.candidates.length === 0) {
       return {
         statusCode: 502,
@@ -98,18 +107,25 @@ EXIGENCE DE SORTIE (structure exacte):
       };
     }
     const text = partsToText(parts);
+=======
+    const data = await r.json();
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const rawText = partsToText(parts);
+    const text = typeof rawText === "string" ? rawText : String(rawText ?? "");
+main
 
     const block = (label) => {
       const rx = new RegExp(`### ${label}:[\\s\\S]*?(?=\\n###|$)`, "i");
       const m = text.match(rx);
       return m ? m[0].replace(new RegExp(`^### ${label}:\\s*`, "i"), "").trim() : "";
     };
+
     const cadreLine = text.match(/### Cadre retenu:\s*([^\n]+)/i)?.[1]?.trim() || detected || "";
     const approach = [
       "### Objectifs:\n" + block("Objectifs"),
       "### Méthodologie:\n" + block("Méthodologie"),
       "### Livrables:\n" + block("Livrables"),
-      "### Planning indicatif:\n" + block("Planning indicatif")
+      "### Planning indicatif:\n" + block("Planning indicatif"),
     ].join("\n\n");
     const nextSteps = block("Prochaines étapes");
 
@@ -120,10 +136,10 @@ EXIGENCE DE SORTIE (structure exacte):
         modelUsed: selectedModel,
         detectedTheme: cadreLine,
         approach,
-        approachHtml: `<div><p>${mdToHtml(approach)}</p></div>`,
+        approachHtml: mdToHtml(approach),
         nextSteps,
-        nextStepsHtml: `<div><p>${mdToHtml(nextSteps)}</p></div>`
-      })
+        nextStepsHtml: mdToHtml(nextSteps),
+      }),
     };
   } catch (e) {
     return {
